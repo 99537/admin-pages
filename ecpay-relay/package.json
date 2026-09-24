@@ -1,0 +1,5 @@
+{
+  "name": "ecpay-relay",
+  "private": true,
+  "type": "module"
+}
