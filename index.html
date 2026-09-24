@@ -3586,8 +3586,33 @@ async function checkMacValue(params) {
   return (await sha256Hex(encodeURIComponent(raw).replace(/%20/g, '+').replace(/'/g, '%27').toLowerCase())).toUpperCase();
 }
 
-// Sign an AIO order and open ECPay's payment page in a new tab. Returns the MerchantTradeNo.
+// Demo mode: instead of opening ECPay, say that this is where the ECPay payment page would open.
+const ECPAY_DEMO = true;
+function showPayNotice(total) {
+  const old = document.getElementById('sx-paynote');
+  if (old) old.remove();
+  const m = document.createElement('div');
+  m.id = 'sx-paynote';
+  m.innerHTML =
+    '<div class="fixed inset-0 bg-black/50 z-40" data-paynote="close"></div>' +
+    '<div role="alertdialog" aria-modal="true" aria-labelledby="sx-paynote-title" class="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-[calc(100%-2rem)] max-w-md bg-card text-card-foreground rounded-xl border border-border shadow-xl p-6">' +
+      '<h2 id="sx-paynote-title" class="text-lg font-semibold text-foreground mb-2">導向綠界付款</h2>' +
+      '<p class="text-sm text-muted-foreground leading-relaxed">實際使用時，這一步會前往綠界（ECPay）付款頁完成付款' + (total ? '，金額 <b class="text-foreground">NT$ ' + Number(total).toLocaleString('en-US') + '</b>' : '') + '。</p>' +
+      '<p class="text-sm text-muted-foreground leading-relaxed mt-2">這是展示版，不會連到綠界，也不會扣款。</p>' +
+      '<div class="flex justify-end mt-6"><button type="button" class="h-10 px-4 rounded-lg text-white text-sm font-medium" style="background:oklch(var(--button,var(--primary)))" data-paynote="close">知道了</button></div>' +
+    '</div>';
+  m.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (e.target.closest('[data-paynote="close"]')) m.remove();
+  });
+  document.body.appendChild(m);
+  m.querySelector('button').focus();
+}
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { const m = document.getElementById('sx-paynote'); if (m) m.remove(); } });
+
+// Sign an AIO order and open ECPay's payment page in a new tab. Returns the MerchantTradeNo (null in demo mode).
 async function payWithECPay(items, total, choosePayment) {
+  if (ECPAY_DEMO) { showPayNotice(total); return null; }
   const tw = new Date(Date.now() + 8 * 3600e3).toISOString();
   const tradeNo = ('SX' + tw.slice(2, 19).replace(/[^0-9]/g, '') + Math.random().toString(36).slice(2, 8).toUpperCase()).slice(0, 20);
   const params = {
@@ -3612,6 +3637,7 @@ async function payWithECPay(items, total, choosePayment) {
 
 async function submitToECPay(method) {
   const tradeNo = await payWithECPay(order.items, order.total, method === 'atm' ? 'ATM' : 'Credit');
+  if (!tradeNo) return;  // demo mode: only the notice
   addTradeNo(order, tradeNo); order.method = method; saveOrder();
   const list = offlineOrders();
   const o = list.find((x) => x.id === order.id);
@@ -3881,6 +3907,7 @@ function payLinkClicks(e, t) {
   const p = orderToPay(cur);
   if (!p) return true;
   payWithECPay(p.items, p.total, 'ALL').then((tradeNo) => {
+    if (!tradeNo) return;
     rememberTrade(p.no, tradeNo);
     toast('已在新分頁開啟綠界付款頁（測試環境）');
   });
@@ -4735,7 +4762,7 @@ function pagesClicks(e, t) {
   if (pay) {
     e.preventDefault(); e.stopPropagation();
     const o = allOrders().find((x) => x.href === pay.dataset.ordersPay);
-    if (o && o.pay) payWithECPay(o.pay.items, o.pay.total, 'ALL').then((tradeNo) => { rememberTrade(o.no, tradeNo); toast('已在新分頁開啟綠界付款頁（測試環境）'); });
+    if (o && o.pay) payWithECPay(o.pay.items, o.pay.total, 'ALL').then((tradeNo) => { if (!tradeNo) return; rememberTrade(o.no, tradeNo); toast('已在新分頁開啟綠界付款頁（測試環境）'); });
     return true;
   }
   return false;
